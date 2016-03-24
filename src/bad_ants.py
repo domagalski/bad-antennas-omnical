@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 
 ################################################################################
-## Common functions for bad
+## Common functions for detecting bad antennas in redundant arrays.
 ## Copyright (C) 2014  Rachel Domagalski: domagalski@berkeley.edu
 ##
 ## This program is free software: you can redistribute it and/or modify
@@ -83,22 +83,56 @@ def gen_corr(gains, reds, visdata=None, noise=None, bad_ants=[]):
     else:
         return output
 
-def mkgrid(gridding):
+def mkgrid(gridding, layout='r'):
     """
     Ncols,Nrows,dx,dy
     """
     # Get the information to generate the grid from
-    # XXX make it hexagonal
-    ncols, nrows, delta_x, delta_y = gridding.split(',')
-    ncols = int(ncols)
-    nrows = int(nrows)
-    delta_x = float(delta_x)
-    delta_y = float(delta_y)
-    nants = nrows * ncols
+    if layout == 'r':
+        ncols, nrows, delta_x, delta_y = gridding.split(',')
+        ncols = int(ncols)
+        nrows = int(nrows)
+        delta_x = float(delta_x)
+        delta_y = float(delta_y)
+        nants = nrows * ncols
 
-    # simple rectangular grid
-    posfunc = lambda i: [delta_x*(i%nrows), delta_y*(i/nrows), 0.]
-    antpos = _np.array([posfunc(i) for i in range(nants)])
+        # simple rectangular grid
+        posfunc = lambda i: [delta_x*(i%nrows), delta_y*(i/nrows), 0.]
+        antpos = _np.array([posfunc(i) for i in range(nants)])
+
+    elif layout == 'h':
+        # If the hex is defined by number of ants per side (n), then the total
+        # number of ants in the hex is N = 3n^2 - 3n + 1. The inverse of this is
+        # n = 1/2 + sqrt(12N - 3)/6. These can be derived with simple geometry.
+        if gridding[0] == 'n':
+            n_side = int(gridding[1:])
+            total = 3*n_side**2 - 3*n_side + 1
+        elif gridding[0] == 'N':
+            total = int(gridding[1:])
+            n_side = int(0.5 + _np.sqrt(12*total - 3)/6)
+
+        # Geometry for triangles
+        delta_y = 0.5 * _np.sqrt(3) # sin(60)
+
+        # Generate the grid.
+        antpos = []
+        for n in range(2*n_side - 1):
+            # Each row has a different amount of antennas
+            if n + 1 < n_side:
+                posfunc = lambda i: [0.5*(n_side-1-n) + i, n*delta_y, 0.]
+                n_row = n_side + n
+            elif n + 1 > n_side:
+                posfunc = lambda i: [0.5*(n+1-n_side) + i, n*delta_y, 0.]
+                n_row = 3*n_side - n - 2
+            else:
+                posfunc = lambda i: [i, n*delta_y, 0.]
+                n_row = 2*n_side - 1
+            antpos += [posfunc(i) for i in range(n_row)]
+        antpos = _np.array(antpos)
+
+    else:
+        raise ValueError('Invalid antenna layout.')
+
     return antpos
 
 def print_progress(step,
